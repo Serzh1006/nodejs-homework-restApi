@@ -76,16 +76,18 @@ const logout = async (req, res) => {
 
 const updateAvatar = async (req, res) => {
   const { path: oldpath, filename } = req.file;
-  Jimp.read(oldpath, (err, file) => {
-    if (err) {
-      throw HttpError(400);
-    }
-    file.resize(250, 250).write(oldpath);
-  });
-  const newpath = path.join(posterPath, filename);
-  fs.rename(oldpath, newpath);
-  const avatarURL = path.join("avatars", filename);
   const { id } = req.user;
+  const newpath = path.join(posterPath, filename);
+  const avatarURL = path.join("avatars", filename);
+  try {
+    const image = await Jimp.read(oldpath);
+    await image.resize(250, 250);
+    await image.writeAsync(oldpath);
+    await fs.rename(oldpath, newpath);
+  } catch (error) {
+    await fs.unlink(oldpath);
+    throw HttpError(400, "Incorrect file format");
+  }
   await User.findByIdAndUpdate(id, { avatarURL });
   res.status(200).json({ avatarURL });
 };
