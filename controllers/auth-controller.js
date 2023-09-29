@@ -1,17 +1,28 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const path = require("path");
+const gravatar = require("gravatar");
+const Jimp = require("jimp");
+const fs = require("fs/promises");
 const HttpError = require("../helpers/HttpError");
 const { ctrlWrapper } = require("../decorators/index");
 const User = require("../models/users");
 
+const posterPath = path.resolve("public", "avatars");
+
 const register = async (req, res) => {
   const { email, password } = req.body;
+  const avatarURL = gravatar.url(email, { protocol: "https" });
   const user = await User.findOne({ email });
   if (user) {
     throw HttpError(409, "Email in use");
   }
   const hashPassword = await bcrypt.hash(password, 10);
-  const newUser = await User.create({ ...req.body, password: hashPassword });
+  const newUser = await User.create({
+    ...req.body,
+    avatarURL,
+    password: hashPassword,
+  });
   res.status(201).json({
     user: {
       email,
@@ -63,9 +74,28 @@ const logout = async (req, res) => {
   });
 };
 
+const updateAvatar = async (req, res) => {
+  const { path: oldpath, filename } = req.file;
+  const { id } = req.user;
+  const newpath = path.join(posterPath, filename);
+  const avatarURL = path.join("avatars", filename);
+  try {
+    const image = await Jimp.read(oldpath);
+    await image.resize(250, 250);
+    await image.writeAsync(oldpath);
+    await fs.rename(oldpath, newpath);
+  } catch (error) {
+    await fs.unlink(oldpath);
+    throw HttpError(400, "Incorrect file format");
+  }
+  await User.findByIdAndUpdate(id, { avatarURL });
+  res.status(200).json({ avatarURL });
+};
+
 module.exports = {
   register: ctrlWrapper(register),
   login: ctrlWrapper(login),
   getCurrent: ctrlWrapper(getCurrent),
   logout: ctrlWrapper(logout),
+  updateAvatar: ctrlWrapper(updateAvatar),
 };
